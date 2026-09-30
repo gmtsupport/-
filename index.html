@@ -8,7 +8,41 @@
   <!-- Supabase SDK -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
-    .pin { position: absolute; transform: translate(-50%, -50%); transition: all 0.2s ease; }
+    /* 位置ピンのデザイン */
+    .pin-container {
+      position: absolute;
+      transform: translate(-50%, -100%);
+      transition: all 0.2s ease;
+      display: flex;
+      flex-col;
+      align-items: center;
+      cursor: pointer;
+    }
+    .pin-icon {
+      width: 24px;
+      height: 24px;
+      background-color: #ef4444;
+      border: 2px solid white;
+      border-radius: 50% 50% 50% 0;
+      transform: rotate(-45deg);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    }
+    .pin-active .pin-icon {
+      background-color: #dc2626;
+      scale: 1.3;
+      border-color: #fef08a;
+    }
+    .pin-label {
+      background-color: rgba(255, 255, 255, 0.9);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: bold;
+      color: #1f2937;
+      margin-top: 2px;
+      white-space: nowrap;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
   </style>
 </head>
 <body class="bg-gray-100 text-gray-800 min-h-screen">
@@ -30,7 +64,7 @@
       <h2 class="text-lg font-bold mb-4 text-center">ログイン</h2>
       <div class="space-y-4">
         <div>
-          <label class="block text-xs text-gray-600 mb-1">ID (ID名)</label>
+          <label class="block text-xs text-gray-600 mb-1">ID</label>
           <input type="text" id="loginId" class="w-full border p-2 rounded text-sm" placeholder="admin または user">
         </div>
         <div>
@@ -53,6 +87,10 @@
       <div id="sec-items" class="space-y-4">
         <div class="flex flex-col sm:flex-row gap-2 justify-between items-center bg-white p-4 rounded shadow-sm">
           <input type="text" id="searchInput" oninput="renderItems()" placeholder="物品名・タグ・場所で検索..." class="border p-2 rounded text-sm w-full sm:w-80">
+          <div class="flex gap-2 w-full sm:w-auto">
+            <button id="adminAddLocationBtn" onclick="openLocationModal()" class="hidden bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded text-sm font-bold w-full sm:w-auto">＋ 保管場所追加</button>
+            <button id="adminAddBtn" onclick="openItemModal()" class="hidden bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded text-sm font-bold w-full sm:w-auto">＋ 物品追加</button>
+          </div>
         </div>
 
         <div class="bg-white rounded shadow-sm overflow-x-auto">
@@ -74,11 +112,12 @@
 
       <!-- Tab B: 図面ピン留め確認 -->
       <div id="sec-map" class="hidden bg-white p-4 rounded shadow-sm space-y-4">
-        <p class="text-xs text-gray-500">保管場所を選択すると図面上の位置（ピン）が赤く表示されます。</p>
+        <p class="text-xs text-gray-500">保管場所を選択すると図面上の赤いピン（📍）が拡大強調表示されます。</p>
         <div class="relative w-full border bg-gray-100 rounded overflow-hidden aspect-[16/9] flex items-center justify-center">
           <img src="事務所図面.jpg" alt="事務所図面" class="absolute inset-0 w-full h-full object-contain" onerror="this.style.display='none'">
           <div class="absolute inset-0 opacity-20 bg-[radial-gradient(#4f46e5_1px,transparent_1px)] [background-size:16px_16px]"></div>
-          <div class="text-gray-400 font-bold text-xl pointer-events-none">オフィスマップ・図面エリア</div>
+          
+          <!-- ピン描画エリア -->
           <div id="pinLayer" class="absolute inset-0"></div>
         </div>
       </div>
@@ -106,6 +145,67 @@
     </div>
   </main>
 
+  <!-- 3. モーダル: 物品追加 -->
+  <div id="itemModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-lg p-6 max-w-md w-full space-y-4">
+      <h3 class="text-lg font-bold border-b pb-2">新規物品の登録</h3>
+      <div class="space-y-3 text-sm">
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">物品名 *</label>
+          <input type="text" id="newItemName" class="w-full border p-2 rounded" placeholder="例: クリアファイル A4">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">カテゴリ</label>
+          <input type="text" id="newItemCategory" class="w-full border p-2 rounded" placeholder="例: 文房具">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">保管場所 *</label>
+          <select id="newItemLocationSelect" class="w-full border p-2 rounded"></select>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">タグ (カンマ区切り)</label>
+          <input type="text" id="newItemTags" class="w-full border p-2 rounded" placeholder="例: 消耗品, 事務用品">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">担当者名</label>
+          <input type="text" id="newItemManager" class="w-full border p-2 rounded" placeholder="例: 総務太郎">
+        </div>
+      </div>
+      <div class="flex justify-end gap-2 pt-2">
+        <button onclick="closeItemModal()" class="px-4 py-2 border rounded text-sm">キャンセル</button>
+        <button onclick="saveNewItem()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded text-sm">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. モーダル: 保管場所追加 -->
+  <div id="locationModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-lg p-6 max-w-md w-full space-y-4">
+      <h3 class="text-lg font-bold border-b pb-2">保管場所（図面ピン）の登録</h3>
+      <div class="space-y-3 text-sm">
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">保管場所名 *</label>
+          <input type="text" id="newLocName" class="w-full border p-2 rounded" placeholder="例: キャビネットC">
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs text-gray-600 mb-1">図面位置 X (%) (0-100)</label>
+            <input type="number" id="newLocX" min="0" max="100" class="w-full border p-2 rounded" value="50">
+          </div>
+          <div>
+            <label class="block text-xs text-gray-600 mb-1">図面位置 Y (%) (0-100)</label>
+            <input type="number" id="newLocY" min="0" max="100" class="w-full border p-2 rounded" value="50">
+          </div>
+        </div>
+        <p class="text-xs text-gray-400">※位置は後から Supabase テーブル内で調整可能です（横位置: X%, 縦位置: Y%）。</p>
+      </div>
+      <div class="flex justify-end gap-2 pt-2">
+        <button onclick="closeLocationModal()" class="px-4 py-2 border rounded text-sm">キャンセル</button>
+        <button onclick="saveNewLocation()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded text-sm">保存</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const SUPABASE_URL = "https://sqgagiwcwynkavrpodzs.supabase.co";
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNxZ2FnaXdjd3lua2F2cnBvZHpzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA2Njg0NDMsImV4cCI6MjEwNjI0NDQ0M30.Jucqa0vMKLCW8ugoDs6EmcnyhNPnOtU3zdD2Y3pYPEc";
@@ -115,40 +215,25 @@
     let dbItems = [];
     let dbLocations = [];
 
-    // 初期化
     window.onload = function() {
       try {
         if (window.supabase) {
           supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        } else {
-          alert("Supabase SDKライブラリの読み込みに失敗しました。ネット接続を確認してください。");
         }
       } catch (e) {
         alert("初期化エラー: " + e.message);
       }
     };
 
-    // ログイン処理
     async function handleLogin() {
       const btn = document.getElementById('loginBtn');
       btn.innerText = "処理中...";
       btn.disabled = true;
 
       try {
-        if (!supabaseClient) {
-          alert("Supabaseが初期化されていません。ページを再読み込みしてください。");
-          return;
-        }
-
         const id = document.getElementById('loginId').value.trim();
         const pw = document.getElementById('loginPw').value.trim();
 
-        if (!id || !pw) {
-          alert("IDとパスワードを入力してください");
-          return;
-        }
-
-        // Supabase問い合わせ
         const { data, error } = await supabaseClient
           .from('users')
           .select('*')
@@ -156,13 +241,8 @@
           .eq('password', pw)
           .maybeSingle();
 
-        if (error) {
-          alert("データベース参照エラー: " + error.message + "\n(RLSポリシーやアクセス権限をご確認ください)");
-          return;
-        }
-
-        if (!data) {
-          alert("該当するユーザーが見つかりません。IDまたはパスワードが間違っています。");
+        if (error || !data) {
+          alert("IDまたはパスワードが正しくありません");
           return;
         }
 
@@ -171,12 +251,17 @@
         document.getElementById('loginSection').classList.add('hidden');
         document.getElementById('appSection').classList.remove('hidden');
         document.getElementById('logoutBtn').classList.remove('hidden');
-        document.getElementById('reportFinder').value = currentUser.name;
 
+        if (currentUser.role === 'admin') {
+          document.getElementById('adminAddBtn').classList.remove('hidden');
+          document.getElementById('adminAddLocationBtn').classList.remove('hidden');
+        }
+
+        document.getElementById('reportFinder').value = currentUser.name;
         await loadInitialData();
 
       } catch (err) {
-        alert("予期せぬエラーが発生しました: " + err.message);
+        alert("エラーが発生しました: " + err.message);
       } finally {
         btn.innerText = "ログイン";
         btn.disabled = false;
@@ -226,19 +311,24 @@
       });
     }
 
+    /* 赤いピンアイコンの描画 */
     function renderMapPins(activeLocationName = null) {
       const layer = document.getElementById('pinLayer');
       layer.innerHTML = '';
 
       dbLocations.forEach(loc => {
-        const pin = document.createElement('div');
+        const pinContainer = document.createElement('div');
         const isActive = loc.name === activeLocationName;
-        pin.className = `pin cursor-pointer font-bold text-xs px-2 py-1 rounded shadow ${isActive ? 'bg-red-600 text-white z-10 scale-125' : 'bg-white text-gray-700 border border-gray-300'}`;
-        pin.style.left = `${loc.pin_x}%`;
-        pin.style.top = `${loc.pin_y}%`;
-        pin.textContent = loc.name;
-        pin.onclick = () => alert(`保管場所: ${loc.name}`);
-        layer.appendChild(pin);
+        pinContainer.className = `pin-container ${isActive ? 'pin-active z-20' : 'z-10'}`;
+        pinContainer.style.left = `${loc.pin_x}%`;
+        pinContainer.style.top = `${loc.pin_y}%`;
+
+        pinContainer.innerHTML = `
+          <div class="pin-icon"></div>
+          <div class="pin-label">${loc.name}</div>
+        `;
+        pinContainer.onclick = () => alert(`保管場所: ${loc.name}`);
+        layer.appendChild(pinContainer);
       });
     }
 
@@ -273,6 +363,76 @@
       } else {
         alert('補充依頼・報告を送信しました！');
         document.getElementById('reportComment').value = '';
+      }
+    }
+
+    /* モーダル関連：物品追加 */
+    function openItemModal() {
+      const select = document.getElementById('newItemLocationSelect');
+      select.innerHTML = dbLocations.map(l => `<option value="${l.name}">${l.name}</option>`).join('');
+      document.getElementById('itemModal').classList.remove('hidden');
+    }
+
+    function closeItemModal() {
+      document.getElementById('itemModal').classList.add('hidden');
+    }
+
+    async function saveNewItem() {
+      const name = document.getElementById('newItemName').value.trim();
+      const category = document.getElementById('newItemCategory').value.trim();
+      const location_name = document.getElementById('newItemLocationSelect').value;
+      const tagsStr = document.getElementById('newItemTags').value.trim();
+      const manager = document.getElementById('newItemManager').value.trim();
+
+      if (!name) {
+        alert('物品名を入力してください');
+        return;
+      }
+
+      const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()) : [];
+
+      const { error } = await supabaseClient.from('items').insert([{
+        name, category, location_name, tags, manager
+      }]);
+
+      if (error) {
+        alert('保存エラー: ' + error.message);
+      } else {
+        alert('物品を追加しました！');
+        closeItemModal();
+        await loadInitialData();
+      }
+    }
+
+    /* モーダル関連：保管場所追加 */
+    function openLocationModal() {
+      document.getElementById('locationModal').classList.remove('hidden');
+    }
+
+    function closeLocationModal() {
+      document.getElementById('locationModal').classList.add('hidden');
+    }
+
+    async function saveNewLocation() {
+      const name = document.getElementById('newLocName').value.trim();
+      const pin_x = parseFloat(document.getElementById('newLocX').value);
+      const pin_y = parseFloat(document.getElementById('newLocY').value);
+
+      if (!name) {
+        alert('保管場所名を入力してください');
+        return;
+      }
+
+      const { error } = await supabaseClient.from('locations').insert([{
+        name, pin_x, pin_y
+      }]);
+
+      if (error) {
+        alert('保存エラー: ' + error.message);
+      } else {
+        alert('保管場所（ピン）を追加しました！');
+        closeLocationModal();
+        await loadInitialData();
       }
     }
 
