@@ -4,871 +4,273 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>社内物品管理システム</title>
-  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Supabase JS Client library -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    .pin {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      transition: all 0.2s ease;
+    }
+  </style>
 </head>
-<body class="bg-slate-100 text-slate-800 antialiased min-h-screen">
-  <div id="root"></div>
-
-  <script type="text/babel">
-    const { useState, useEffect } = React;
-
-    const MAP_IMAGE_URL = "事務所図面.jpg";
-
-    // アカウント情報（マスターデータ）
-    const USERS = [
-      { id: 'admin', password: 'admin123', name: '管理者（総務）', role: 'admin' },
-      { id: 'user', password: 'user123', name: '一般社員', role: 'user' },
-    ];
-
-    const INITIAL_LOCATIONS = [
-      { id: 1, name: 'STOCK（保管庫）', pin: { x: 62, y: 88 } },
-      { id: 2, name: '個人ロッカー(16P)', pin: { x: 50, y: 55 } },
-      { id: 3, name: '個人ロッカー(24P)', pin: { x: 55, y: 40 } },
-      { id: 4, name: '会計・人事・通販事業部', pin: { x: 40, y: 90 } },
-      { id: 5, name: 'REFRESH 34P（パントリー）', pin: { x: 35, y: 22 } },
-      { id: 6, name: '執務エリア', pin: { x: 50, y: 50 } },
-    ];
-
-    const INITIAL_TAG_OPTIONS = [
-      '消耗品', 'コピー', '事務用品', '梱包', '営業', '販促物', '衛生', 'PC', '備品'
-    ];
-
-    const INITIAL_ITEMS = [
-      { id: 1, name: 'A3用紙', category: 'コピー・用紙', locationName: 'STOCK（保管庫）', tags: ['消耗品', 'コピー'], manager: '田中さん', contactType: 'Chatwork' },
-      { id: 2, name: 'A4用紙', category: 'コピー・用紙', locationName: 'STOCK（保管庫）', tags: ['消耗品', 'コピー'], manager: '田中さん', contactType: 'Chatwork' },
-      { id: 3, name: 'メモ帳', category: '文房具・事務用品', locationName: '個人ロッカー(16P)', tags: ['事務用品'], manager: '佐藤さん', contactType: 'メール' },
-      { id: 4, name: 'テープ', category: '文房具・事務用品', locationName: 'STOCK（保管庫）', tags: ['梱包', '事務用品'], manager: '佐藤さん', contactType: 'メール' },
-      { id: 5, name: 'パンフレット', category: '営業資料', locationName: '会計・人事・通販事業部', tags: ['営業', '販促物'], manager: '営業部○○さん', contactType: 'メール' },
-      { id: 6, name: 'ペーパータオル', category: '衛生用品', locationName: 'REFRESH 34P（パントリー）', tags: ['衛生', '消耗品'], manager: '総務○○さん', contactType: 'Chatwork' },
-      { id: 7, name: 'キーボード', category: 'PC・周辺機器', locationName: '個人ロッカー(24P)', tags: ['PC', '備品'], manager: '情報システム○○さん', contactType: 'メール' },
-    ];
-
-    const CATEGORIES = [
-      'すべて', 'コピー・用紙', '文房具・事務用品', '営業資料', 
-      '書類', '清掃用品', '衛生用品', 'ゴミ・廃棄用品', 'PC・周辺機器'
-    ];
-
-    const getStorageData = (key, defaultValue) => {
-      try {
-        const saved = localStorage.getItem(key);
-        return saved ? JSON.parse(saved) : defaultValue;
-      } catch (e) {
-        return defaultValue;
-      }
-    };
-
-    function App() {
-      // ログイン中のアカウント情報
-      const [currentUser, setCurrentUser] = useState(() => getStorageData('item_app_current_user', null));
-      
-      // ログインフォーム用ステート
-      const [inputId, setInputId] = useState('');
-      const [inputPassword, setInputPassword] = useState('');
-      const [loginError, setLoginError] = useState('');
-
-      const [items, setItems] = useState(() => getStorageData('item_app_items', INITIAL_ITEMS));
-      const [locations, setLocations] = useState(() => getStorageData('item_app_locations', INITIAL_LOCATIONS));
-      const [tagOptions, setTagOptions] = useState(() => getStorageData('item_app_tags', INITIAL_TAG_OPTIONS));
-      const [history, setHistory] = useState(() => getStorageData('item_app_history', [
-        { date: '8/27 10:15', item: 'A4用紙', finder: '鈴木さん', requester: '山田太郎', comment: '残り1箱のため報告' },
-      ]));
-
-      const [search, setSearch] = useState('');
-      const [selectedCategory, setSelectedCategory] = useState('すべて');
-      const [selectedItem, setSelectedItem] = useState(null);
-      const [modalType, setModalType] = useState(null); // 'add_item', 'edit_item', 'manage_locations', 'view_map', 'order_report'
-      const [mapTargetItem, setMapTargetItem] = useState(null);
-
-      const [newTagInput, setNewTagInput] = useState('');
-      const [newLocName, setNewLocName] = useState('');
-      const [newLocPin, setNewLocPin] = useState({ x: 50, y: 50 });
-
-      const [newItem, setNewItem] = useState({
-        id: null,
-        name: '', 
-        category: 'コピー・用紙', 
-        locationName: locations[0]?.name || '', 
-        tags: [], 
-        manager: '', 
-        contactType: 'Chatwork'
-      });
-
-      // 統合「発注・不足報告」用フォーム
-      const [finderName, setFinderName] = useState('');
-      const [requesterName, setRequesterName] = useState('');
-      const [quantity, setQuantity] = useState(1);
-      const [comment, setComment] = useState('');
-
-      useEffect(() => { localStorage.setItem('item_app_current_user', JSON.stringify(currentUser)); }, [currentUser]);
-      useEffect(() => { localStorage.setItem('item_app_items', JSON.stringify(items)); }, [items]);
-      useEffect(() => { localStorage.setItem('item_app_locations', JSON.stringify(locations)); }, [locations]);
-      useEffect(() => { localStorage.setItem('item_app_tags', JSON.stringify(tagOptions)); }, [tagOptions]);
-      useEffect(() => { localStorage.setItem('item_app_history', JSON.stringify(history)); }, [history]);
-
-      const isAdmin = currentUser?.role === 'admin';
-
-      // ログイン処理
-      const handleLogin = (e) => {
-        e.preventDefault();
-        const found = USERS.find(u => u.id === inputId && u.password === inputPassword);
-        if (found) {
-          setCurrentUser(found);
-          setLoginError('');
-          setInputId('');
-          setInputPassword('');
-        } else {
-          setLoginError('IDまたはパスワードが正しくありません。');
-        }
-      };
-
-      // ログアウト処理
-      const handleLogout = () => {
-        setCurrentUser(null);
-      };
-
-      const getPinByLocationName = (locName) => {
-        const loc = locations.find(l => l.name === locName);
-        return loc ? loc.pin : { x: 50, y: 50 };
-      };
-
-      const filteredItems = items.filter(item => {
-        const matchesCategory = selectedCategory === 'すべて' || item.category === selectedCategory;
-        const matchesSearch = item.name.includes(search) || item.tags.some(t => t.includes(search));
-        return matchesCategory && matchesSearch;
-      });
-
-      // 発注・不足報告送信処理
-      const handleSubmitAction = (e) => {
-        e.preventDefault();
-        if (!finderName) return alert('不足発見者の名前を入力してください');
-        if (!requesterName) return alert('依頼者の名前を入力してください');
-
-        const newLog = {
-          date: new Date().toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
-          item: selectedItem.name,
-          finder: finderName,
-          requester: requesterName,
-          quantity: quantity,
-          comment: comment
-        };
-
-        setHistory([newLog, ...history]);
-        alert(`【発見者: ${finderName} / 依頼者: ${requesterName}】\n${selectedItem.manager}（${selectedItem.contactType}）へ発注・不足報告を送信しました。`);
-        
-        setModalType(null);
-        setComment('');
-        setQuantity(1);
-      };
-
-      const handleSaveItem = (e) => {
-        e.preventDefault();
-        if (!newItem.name || !newItem.locationName) return alert('物品名と保管場所は必須です');
-
-        if (modalType === 'edit_item') {
-          const updated = items.map(item => item.id === newItem.id ? newItem : item);
-          setItems(updated);
-          alert('物品情報を更新しました。');
-        } else {
-          const itemToAdd = {
-            ...newItem,
-            id: Date.now(),
-            manager: newItem.manager || '未設定'
-          };
-          setItems([itemToAdd, ...items]);
-          alert('新しい物品を追加しました。');
-        }
-
-        setModalType(null);
-        resetNewItemForm();
-      };
-
-      const handleDeleteItem = (itemId, itemName) => {
-        if (!confirm(`物品「${itemName}」を削除してもよろしいですか？`)) return;
-        setItems(items.filter(item => item.id !== itemId));
-        if (selectedItem?.id === itemId) setSelectedItem(null);
-        alert('削除しました。');
-      };
-
-      const resetNewItemForm = () => {
-        setNewItem({ 
-          id: null,
-          name: '', 
-          category: 'コピー・用紙', 
-          locationName: locations[0]?.name || '', 
-          tags: [], 
-          manager: '', 
-          contactType: 'Chatwork'
-        });
-      };
-
-      const handleOpenEdit = (item) => {
-        setNewItem(item);
-        setModalType('edit_item');
-      };
-
-      const handleAddLocationMaster = (e) => {
-        e.preventDefault();
-        const trimmed = newLocName.trim();
-        if (!trimmed) return alert('保管場所名を入力してください');
-        if (locations.some(l => l.name === trimmed)) return alert('その保管場所名は既に登録されています');
-
-        const newLoc = { id: Date.now(), name: trimmed, pin: newLocPin };
-        setLocations([...locations, newLoc]);
-        alert(`保管場所「${trimmed}」を登録しました。`);
-        setNewLocName('');
-        setNewLocPin({ x: 50, y: 50 });
-      };
-
-      const handleRemoveLocationMaster = (id, name) => {
-        if (locations.length <= 1) return alert('保管場所は最低1つ必要です');
-        const isUsed = items.some(item => item.locationName === name);
-        if (isUsed) {
-          if (!confirm(`「${name}」を使用している物品が存在します。本当に削除しますか？`)) return;
-        }
-        const updated = locations.filter(l => l.id !== id);
-        setLocations(updated);
-        if (newItem.locationName === name) {
-          setNewItem({ ...newItem, locationName: updated[0]?.name || '' });
-        }
-      };
-
-      const handleAddTagOption = () => {
-        const trimmed = newTagInput.trim();
-        if (!trimmed) return;
-        if (tagOptions.includes(trimmed)) return alert('そのタグは既に存在します');
-        setTagOptions([...tagOptions, trimmed]);
-        setNewItem({ ...newItem, tags: [...newItem.tags, trimmed] });
-        setNewTagInput('');
-      };
-
-      const handleTagSelect = (e) => {
-        const selectedValue = e.target.value;
-        if (!selectedValue) return;
-        if (!newItem.tags.includes(selectedValue)) {
-          setNewItem({ ...newItem, tags: [...newItem.tags, selectedValue] });
-        }
-      };
-
-      const handleRemoveTag = (tagToRemove) => {
-        setNewItem({
-          ...newItem,
-          tags: newItem.tags.filter(t => t !== tagToRemove)
-        });
-      };
-
-      const handleLocMapClick = (e) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        const x = Math.round(((e.clientX - rect.left) / rect.width) * 100);
-        const y = Math.round(((e.clientY - rect.top) / rect.height) * 100);
-        setNewLocPin({ x: Math.max(0, Math.min(100, x)), y: Math.max(0, Math.min(100, y)) });
-      };
-
-      const handleResetData = () => {
-        if (confirm('すべてのデータを初期状態にリセットしますか？')) {
-          localStorage.clear();
-          setItems(INITIAL_ITEMS);
-          setLocations(INITIAL_LOCATIONS);
-          setTagOptions(INITIAL_TAG_OPTIONS);
-          setCurrentUser(null);
-          setHistory([{ date: '8/27 10:15', item: 'A4用紙', finder: '鈴木さん', requester: '山田太郎', comment: '残り1箱のため報告' }]);
-          alert('リセットが完了しました。');
-        }
-      };
-
-      // --- ログイン画面 ---
-      if (!currentUser) {
-        return (
-          <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4">
-            <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl space-y-6">
-              <div className="text-center space-y-2">
-                <h1 className="text-2xl font-bold text-slate-900">社内物品管理システム</h1>
-                <p className="text-xs text-slate-500">IDとパスワードを入力してログインしてください</p>
-              </div>
-
-              {loginError && (
-                <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-lg text-xs font-bold text-center">
-                  {loginError}
-                </div>
-              )}
-
-              <form onSubmit={handleLogin} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">ユーザーID</label>
-                  <input 
-                    type="text" 
-                    required
-                    placeholder="IDを入力" 
-                    value={inputId}
-                    onChange={(e) => setInputId(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-600"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">パスワード</label>
-                  <input 
-                    type="password" 
-                    required
-                    placeholder="パスワードを入力" 
-                    value={inputPassword}
-                    onChange={(e) => setInputPassword(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-600"
-                  />
-                </div>
-
-                <button 
-                  type="submit"
-                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-sm shadow-md transition"
-                >
-                  ログイン
-                </button>
-              </form>
-
-              {/* テスト用ヒント（運用時は削除） */}
-              <div className="pt-4 border-t border-slate-100 text-[11px] text-slate-500 space-y-1 bg-slate-50 p-3 rounded-lg">
-                <p className="font-bold text-slate-700">【動作確認用アカウント】</p>
-                <p>🔑 <span className="font-bold">管理者:</span> ID: <code className="bg-slate-200 px-1 rounded">admin</code> / Pass: <code className="bg-slate-200 px-1 rounded">admin123</code></p>
-                <p>👤 <span className="font-bold">一般:</span> ID: <code className="bg-slate-200 px-1 rounded">user</code> / Pass: <code className="bg-slate-200 px-1 rounded">user123</code></p>
-              </div>
-            </div>
-          </div>
-        );
-      }
-
-      // --- メインシステム画面 ---
-      return (
-        <div className="w-full min-h-screen pb-12">
-          {/* ヘッダー */}
-          <header className="bg-slate-900 text-white py-4 px-6 shadow-md border-b border-slate-800">
-            <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-              <div className="flex items-center gap-3">
-                <h1 className="text-xl font-bold tracking-wide">社内物品管理システム</h1>
-                {/* ログインユーザーと権限表示 */}
-                <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${
-                  isAdmin 
-                    ? 'bg-amber-500 text-slate-950 border-amber-400' 
-                    : 'bg-slate-700 text-slate-200 border-slate-600'
-                }`}>
-                  {isAdmin ? '🔑 管理者' : '👤 一般ユーザー'}: {currentUser.name}
-                </span>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <button 
-                  onClick={handleLogout}
-                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium px-3 py-2 rounded-lg transition border border-slate-700"
-                >
-                  🚪 ログアウト
-                </button>
-
-                <button 
-                  onClick={handleResetData}
-                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium px-2.5 py-2 rounded-lg transition border border-slate-700"
-                  title="データ初期化"
-                >
-                  🔄 リセット
-                </button>
-
-                {isAdmin && (
-                  <>
-                    <button 
-                      onClick={() => setModalType('manage_locations')}
-                      className="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold px-3 py-2 rounded-lg transition shadow-sm border border-slate-600"
-                    >
-                      📍 保管場所マスター管理
-                    </button>
-                    <button 
-                      onClick={() => {
-                        resetNewItemForm();
-                        setModalType('add_item');
-                      }}
-                      className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition shadow-sm"
-                    >
-                      ＋ 物品を新規登録
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          </header>
-
-          <main className="max-w-7xl mx-auto px-4 sm:px-6 pt-6">
-            {/* 検索・カテゴリー */}
-            <section className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 mb-6 space-y-4">
-              <input 
-                type="text" 
-                placeholder="物品名やタグ（例: 消耗品）で検索..." 
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition"
-              />
-              <div className="flex flex-wrap gap-2 pt-1 border-t border-slate-100">
-                {CATEGORIES.map(cat => (
-                  <button 
-                    key={cat} 
-                    onClick={() => setSelectedCategory(cat)}
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
-                      selectedCategory === cat 
-                        ? 'bg-blue-600 text-white shadow-sm' 
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                  >
-                    {cat}
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            {/* メインエリア */}
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-              <div className="lg:col-span-3 space-y-3">
-                <div className="flex justify-between items-center px-1">
-                  <h2 className="text-sm font-bold text-slate-700">対象物品 一覧</h2>
-                  <span className="text-xs text-slate-500 font-medium">{filteredItems.length} 件</span>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {filteredItems.map(item => (
-                    <div 
-                      key={item.id} 
-                      onClick={() => setSelectedItem(selectedItem?.id === item.id ? null : item)}
-                      className={`border rounded-xl p-4 transition cursor-pointer bg-white shadow-sm flex flex-col justify-between ${
-                        selectedItem?.id === item.id 
-                          ? 'border-blue-600 ring-2 ring-blue-100' 
-                          : 'border-slate-200 hover:border-slate-300'
-                      }`}
-                    >
-                      <div>
-                        <div className="flex justify-between items-start mb-2">
-                          <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
-                            {item.category}
-                          </span>
-                          <span className="text-xs text-slate-600 font-medium bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                            保管: {item.locationName}
-                          </span>
-                        </div>
-
-                        <h3 className="font-bold text-base text-slate-900 mb-2">{item.name}</h3>
-
-                        <div className="flex flex-wrap gap-1 mb-3">
-                          {item.tags.map(tag => (
-                            <span key={tag} className="text-[11px] bg-slate-50 border border-slate-200 text-slate-500 px-2 py-0.5 rounded">
-                              #{tag}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* アコーディオン詳細表示 */}
-                      {selectedItem?.id === item.id && (
-                        <div className="mt-3 pt-3 border-t border-slate-200 space-y-3" onClick={(e) => e.stopPropagation()}>
-                          <div className="bg-slate-50 p-2.5 rounded-lg text-xs space-y-1 border border-slate-100">
-                            <p className="text-slate-700"><span className="font-bold text-slate-900">発注担当:</span> {item.manager}</p>
-                            <p className="text-slate-700"><span className="font-bold text-slate-900">連絡ツール:</span> {item.contactType}</p>
-                          </div>
-
-                          <button 
-                            onClick={() => { setMapTargetItem(item); setModalType('view_map'); }}
-                            className="w-full bg-slate-800 text-white py-2 rounded-lg font-bold hover:bg-slate-900 transition text-xs shadow-sm"
-                          >
-                            📍 図面で保管場所を確認
-                          </button>
-
-                          <button 
-                            onClick={() => setModalType('order_report')}
-                            className="w-full bg-blue-600 text-white py-2 rounded-lg font-bold hover:bg-blue-700 transition text-xs shadow-sm"
-                          >
-                            📦 発注・不足報告を行う
-                          </button>
-
-                          {/* 管理者のみ編集・削除ボタンを表示 */}
-                          {isAdmin && (
-                            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
-                              <button 
-                                onClick={() => handleOpenEdit(item)}
-                                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-1.5 rounded font-bold text-xs border border-slate-300"
-                              >
-                                ✏️ 編集
-                              </button>
-                              <button 
-                                onClick={() => handleDeleteItem(item.id, item.name)}
-                                className="w-full bg-red-50 hover:bg-red-100 text-red-600 py-1.5 rounded font-bold text-xs border border-red-200"
-                              >
-                                🗑️ 削除
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* 履歴エリア */}
-              <div className="lg:col-span-1">
-                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm sticky top-6">
-                  <h2 className="text-sm font-bold text-slate-800 pb-3 mb-3 border-b border-slate-100">
-                    発注・不足報告の履歴
-                  </h2>
-                  <div className="space-y-2.5 max-h-[70vh] overflow-y-auto pr-1">
-                    {history.map((h, i) => (
-                      <div key={i} className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs space-y-1.5">
-                        <div className="flex justify-between items-center">
-                          <span className="font-bold text-slate-900 text-sm">{h.item}</span>
-                          <span className="text-slate-400 text-[10px]">{h.date}</span>
-                        </div>
-                        <div className="bg-white p-2 rounded border border-slate-100 space-y-0.5 text-[11px]">
-                          <div className="text-slate-600"><span className="font-bold text-slate-800">🔍 不足発見:</span> {h.finder}</div>
-                          <div className="text-slate-600"><span className="font-bold text-slate-800">✉️ 発注依頼:</span> {h.requester}</div>
-                        </div>
-                        {h.comment && <div className="text-slate-500 text-[11px] italic">「{h.comment}」</div>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </main>
-
-          {/* モーダル群 */}
-
-          {/* 1. 保管場所マスター管理（管理者限定） */}
-          {modalType === 'manage_locations' && isAdmin && (
-            <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-              <div className="bg-white rounded-xl w-full max-w-4xl p-6 space-y-5 shadow-2xl border border-slate-200 max-h-[90vh] flex flex-col">
-                <div className="border-b border-slate-100 pb-3 flex justify-between items-center shrink-0">
-                  <div>
-                    <h3 className="font-bold text-lg text-slate-900">📍 保管場所マスター管理</h3>
-                    <p className="text-xs text-slate-500">保管場所の名称と図面上のピン位置を登録・削除できます。</p>
-                  </div>
-                  <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 overflow-y-auto pr-1 flex-1">
-                  <form onSubmit={handleAddLocationMaster} className="space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-200 h-fit">
-                    <h4 className="font-bold text-xs text-slate-700 uppercase tracking-wider">新しい保管場所を登録</h4>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">保管場所の名称 <span className="text-red-500">*</span></label>
-                      <input 
-                        type="text" 
-                        required
-                        placeholder="例: 会議室A 横棚" 
-                        value={newLocName}
-                        onChange={(e) => setNewLocName(e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">図面上の位置（図面をクリックして選択）</label>
-                      <div 
-                        onClick={handleLocMapClick}
-                        className="relative border rounded-lg overflow-hidden bg-slate-200 cursor-crosshair select-none w-full"
-                      >
-                        <img src={MAP_IMAGE_URL} alt="事務所図面" className="w-full h-auto block" />
-                        <div 
-                          className="absolute w-5 h-5 bg-red-600 rounded-full border-2 border-white shadow-md transform -translate-x-1/2 -translate-y-1/2 flex items-center justify-center"
-                          style={{ left: `${newLocPin.x}%`, top: `${newLocPin.y}%` }}
-                        >
-                          <div className="w-1.5 h-1.5 bg-white rounded-full"></div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <button 
-                      type="submit" 
-                      className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition shadow-sm"
-                    >
-                      ＋ この保管場所をマスター登録
-                    </button>
-                  </form>
-
-                  <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
-                    <h4 className="font-bold text-xs text-slate-700 uppercase tracking-wider mb-2">登録済みマスター一覧 ({locations.length})</h4>
-                    {locations.map(loc => (
-                      <div key={loc.id} className="flex justify-between items-center p-3 bg-white rounded-lg border border-slate-200 shadow-sm text-xs">
-                        <div>
-                          <div className="font-bold text-slate-800">{loc.name}</div>
-                          <div className="text-[10px] text-slate-400">座標: ({loc.pin.x}%, {loc.pin.y}%)</div>
-                        </div>
-                        <button 
-                          onClick={() => handleRemoveLocationMaster(loc.id, loc.name)}
-                          className="text-red-500 hover:bg-red-50 p-1.5 rounded transition border border-transparent hover:border-red-200"
-                        >
-                          🗑️ 削除
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="pt-2 border-t border-slate-100 flex justify-end shrink-0">
-                  <button onClick={() => setModalType(null)} className="px-6 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-lg text-xs transition">
-                    完了
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* 2. 図面ピン表示モーダル */}
-          {modalType === 'view_map' && mapTargetItem && (
-            <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-              <div className="bg-white rounded-xl w-full max-w-4xl p-6 space-y-4 shadow-2xl border border-slate-200 max-h-[90vh] flex flex-col">
-                <div className="flex justify-between items-center border-b border-slate-100 pb-3 shrink-0">
-                  <div>
-                    <span className="text-xs font-bold text-blue-600">事務所図面</span>
-                    <h3 className="font-bold text-lg text-slate-900">{mapTargetItem.name} （{mapTargetItem.locationName}）</h3>
-                  </div>
-                  <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
-                </div>
-
-                <div className="relative border rounded-lg overflow-auto bg-slate-100 select-none flex-1 max-h-[70vh]">
-                  <div className="relative inline-block min-w-full">
-                    <img src={MAP_IMAGE_URL} alt="事務所図面" className="w-full h-auto block" />
-                    {(() => {
-                      const pin = getPinByLocationName(mapTargetItem.locationName);
-                      return (
-                        <div 
-                          className="absolute transform -translate-x-1/2 -translate-y-full flex flex-col items-center pointer-events-none transition-all duration-300"
-                          style={{ left: `${pin.x}%`, top: `${pin.y}%` }}
-                        >
-                          <span className="bg-red-600 text-white text-[11px] font-bold px-2.5 py-1 rounded shadow-md border border-white whitespace-nowrap mb-1">
-                            {mapTargetItem.name}
-                          </span>
-                          <div className="w-5 h-5 bg-red-600 rounded-full border-2 border-white shadow-lg animate-bounce"></div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                </div>
-
-                <button onClick={() => setModalType(null)} className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs transition shrink-0">
-                  閉じる
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* 3. 物品新規登録・編集モーダル（管理者限定） */}
-          {(modalType === 'add_item' || modalType === 'edit_item') && isAdmin && (
-            <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-              <div className="bg-white rounded-xl w-full max-w-2xl p-6 shadow-2xl border border-slate-200 max-h-[85vh] flex flex-col">
-                <div className="border-b border-slate-100 pb-3 flex justify-between items-center shrink-0 mb-4">
-                  <h3 className="font-bold text-lg text-slate-900">
-                    {modalType === 'edit_item' ? '物品情報の編集' : '新しい物品の追加登録'}
-                  </h3>
-                  <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
-                </div>
-
-                <form onSubmit={handleSaveItem} className="overflow-y-auto pr-2 space-y-4 flex-1">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">物品名 <span className="text-red-500">*</span></label>
-                      <input 
-                        type="text" 
-                        required
-                        placeholder="例: トナーカートリッジ" 
-                        value={newItem.name}
-                        onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-600"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">カテゴリー</label>
-                      <select 
-                        value={newItem.category}
-                        onChange={(e) => setNewItem({ ...newItem, category: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-600"
-                      >
-                        {CATEGORIES.filter(c => c !== 'すべて').map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                    </div>
-
-                    <div>
-                      <div className="flex justify-between items-center mb-1">
-                        <label className="block text-xs font-bold text-slate-700">保管場所の名称 <span className="text-red-500">*</span></label>
-                        <button type="button" onClick={() => setModalType('manage_locations')} className="text-[11px] text-blue-600 font-bold hover:underline">
-                          ＋ マスター管理
-                        </button>
-                      </div>
-                      <select 
-                        required
-                        value={newItem.locationName}
-                        onChange={(e) => setNewItem({ ...newItem, locationName: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-600"
-                      >
-                        {locations.map(loc => (
-                          <option key={loc.id} value={loc.name}>{loc.name}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">タグ（複数選択可）</label>
-                      <select value="" onChange={handleTagSelect} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-600">
-                        <option value="">-- タグを選択して追加 --</option>
-                        {tagOptions.map(t => (
-                          <option key={t} value={t} disabled={newItem.tags.includes(t)}>
-                            {t} {newItem.tags.includes(t) ? '（追加済み）' : ''}
-                          </option>
-                        ))}
-                      </select>
-
-                      <div className="flex flex-wrap gap-1 mt-2 min-h-[24px]">
-                        {newItem.tags.map(tag => (
-                          <span key={tag} className="inline-flex items-center gap-1 text-xs bg-blue-50 border border-blue-200 text-blue-700 px-2 py-0.5 rounded-full font-medium">
-                            #{tag}
-                            <button type="button" onClick={() => handleRemoveTag(tag)} className="text-blue-500 hover:text-blue-800 font-bold ml-0.5">×</button>
-                          </span>
-                        ))}
-                      </div>
-
-                      <div className="flex gap-1.5 mt-1.5">
-                        <input 
-                          type="text" 
-                          placeholder="新しいタグ名..." 
-                          value={newTagInput}
-                          onChange={(e) => setNewTagInput(e.target.value)}
-                          className="flex-1 px-2 py-1 text-xs border border-slate-200 rounded"
-                        />
-                        <button type="button" onClick={handleAddTagOption} className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs px-2.5 py-1 rounded font-medium border border-slate-300">
-                          ＋追加
-                        </button>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">発注担当者名</label>
-                      <input 
-                        type="text" 
-                        placeholder="例: 総務部 田中さん" 
-                        value={newItem.manager}
-                        onChange={(e) => setNewItem({ ...newItem, manager: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">連絡ツール</label>
-                      <select 
-                        value={newItem.contactType}
-                        onChange={(e) => setNewItem({ ...newItem, contactType: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900"
-                      >
-                        <option value="Chatwork">Chatwork</option>
-                        <option value="メール">メール</option>
-                        <option value="Slack">Slack</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3 pt-3 border-t border-slate-100 shrink-0">
-                    <button type="button" onClick={() => setModalType(null)} className="w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs">
-                      キャンセル
-                    </button>
-                    <button type="submit" className="w-1/2 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs shadow-sm">
-                      {modalType === 'edit_item' ? '変更を保存' : '物品を追加登録'}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          )}
-
-          {/* 4. 発注・不足報告モーダル */}
-          {modalType === 'order_report' && selectedItem && (
-            <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-              <div className="bg-white rounded-xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
-                <div className="border-b border-slate-100 pb-3 flex justify-between items-center">
-                  <h3 className="font-bold text-lg text-slate-900">📦 発注・不足報告の送信</h3>
-                  <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
-                </div>
-
-                <div className="bg-blue-50 p-3 rounded-lg text-xs space-y-1 border border-blue-100">
-                  <p className="font-bold text-blue-900 text-sm">{selectedItem.name}</p>
-                  <p className="text-blue-700">通知先担当者: {selectedItem.manager} ({selectedItem.contactType})</p>
-                </div>
-
-                <form onSubmit={handleSubmitAction} className="space-y-3">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">🔍 不足発見者 <span className="text-red-500">*</span></label>
-                      <input 
-                        type="text" 
-                        required
-                        placeholder="例: 鈴木さん" 
-                        value={finderName}
-                        onChange={(e) => setFinderName(e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">✉️ 発注依頼者 <span className="text-red-500">*</span></label>
-                      <input 
-                        type="text" 
-                        required
-                        placeholder="例: 山田太郎" 
-                        value={requesterName}
-                        onChange={(e) => setRequesterName(e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">希望数量</label>
-                    <input 
-                      type="number" 
-                      min="1"
-                      value={quantity}
-                      onChange={(e) => setQuantity(Number(e.target.value))}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">コメント・状況</label>
-                    <textarea 
-                      rows="3"
-                      placeholder="例: 在庫が残り1箱のため、発注をお願いします。"
-                      value={comment}
-                      onChange={(e) => setComment(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
-                    ></textarea>
-                  </div>
-
-                  <div className="flex gap-2 pt-2">
-                    <button 
-                      type="button" 
-                      onClick={() => setModalType(null)}
-                      className="w-1/2 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs transition"
-                    >
-                      キャンセル
-                    </button>
-                    <button 
-                      type="submit" 
-                      className="w-1/2 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition shadow-sm"
-                    >
-                      送信する
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          )}
-
+<body class="bg-gray-100 text-gray-800 min-h-screen">
+
+  <!-- ヘッダー -->
+  <header class="bg-indigo-700 text-white p-4 shadow-md flex justify-between items-center">
+    <h1 class="text-xl font-bold">社内物品管理システム</h1>
+    <div id="userStatus" class="flex items-center gap-4 text-sm">
+      <span id="userNameDisplay">未ログイン</span>
+      <button id="logoutBtn" onclick="logout()" class="hidden bg-indigo-900 hover:bg-indigo-800 px-3 py-1 rounded text-xs">ログアウト</button>
+    </div>
+  </header>
+
+  <!-- メインコンテンツ -->
+  <main class="container mx-auto p-4 max-w-5xl">
+
+    <!-- 1. ログイン画面 -->
+    <div id="loginSection" class="bg-white p-6 rounded-lg shadow-md max-w-md mx-auto my-12">
+      <h2 class="text-lg font-bold mb-4 text-center">ログイン</h2>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">ID (ID名)</label>
+          <input type="text" id="loginId" class="w-full border p-2 rounded text-sm" placeholder="admin または user">
         </div>
-      );
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">パスワード</label>
+          <input type="password" id="loginPw" class="w-full border p-2 rounded text-sm" placeholder="admin123 または user123">
+        </div>
+        <button onclick="handleLogin()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded font-bold text-sm">ログイン</button>
+      </div>
+    </div>
+
+    <!-- 2. アプリ本体（初期状態は非表示） -->
+    <div id="appSection" class="hidden space-y-6">
+
+      <!-- タブ切替 -->
+      <div class="flex border-b border-gray-300 gap-2">
+        <button onclick="switchTab('items')" id="tab-items" class="py-2 px-4 border-b-2 border-indigo-600 font-bold text-indigo-600">物品一覧・検索</button>
+        <button onclick="switchTab('map')" id="tab-map" class="py-2 px-4 text-gray-500 font-medium">図面ピン留め確認</button>
+        <button onclick="switchTab('report')" id="tab-report" class="py-2 px-4 text-gray-500 font-medium">不足・発注報告</button>
+      </div>
+
+      <!-- Tab A: 物品一覧・検索 -->
+      <div id="sec-items" class="space-y-4">
+        <div class="flex flex-col sm:flex-row gap-2 justify-between items-center bg-white p-4 rounded shadow-sm">
+          <input type="text" id="searchInput" oninput="renderItems()" placeholder="物品名・タグ・場所で検索..." class="border p-2 rounded text-sm w-full sm:w-80">
+          <button id="adminAddBtn" onclick="openItemModal()" class="hidden bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm font-bold w-full sm:w-auto">＋ 新規物品追加 (管理者専用)</button>
+        </div>
+
+        <div class="bg-white rounded shadow-sm overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-gray-50 text-gray-600 border-b">
+              <tr>
+                <th class="p-3">物品名</th>
+                <th class="p-3">カテゴリ</th>
+                <th class="p-3">保管場所</th>
+                <th class="p-3">タグ</th>
+                <th class="p-3">担当</th>
+                <th class="p-3 text-center">操作</th>
+              </tr>
+            </thead>
+            <tbody id="itemsTableBody" class="divide-y">
+              <!-- JSで動的描画 -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tab B: 図面ピン留め確認 -->
+      <div id="sec-map" class="hidden bg-white p-4 rounded shadow-sm space-y-4">
+        <p class="text-xs text-gray-500">保管場所を選択すると図面上の位置（ピン）が赤く表示されます。</p>
+        <div class="relative w-full border bg-gray-100 rounded overflow-hidden aspect-[16/9]">
+          <!-- 実際の事務所図面を表示 -->
+          <img src="事務所図面.jpg" alt="事務所図面" class="absolute inset-0 w-full h-full object-contain">
+          
+          <!-- ピン描画エリア -->
+          <div id="pinLayer" class="absolute inset-0"></div>
+        </div>
+      </div>
+
+      <!-- Tab C: 不足・発注報告 -->
+      <div id="sec-report" class="hidden bg-white p-6 rounded shadow-sm max-w-lg mx-auto space-y-4">
+        <h3 class="font-bold border-b pb-2">物品の不足・補充依頼</h3>
+        <div class="space-y-3 text-sm">
+          <div>
+            <label class="block text-xs text-gray-600 mb-1">対象物品</label>
+            <select id="reportItemSelect" class="w-full border p-2 rounded"></select>
+          </div>
+          <div>
+            <label class="block text-xs text-gray-600 mb-1">発見者・報告者</label>
+            <input type="text" id="reportFinder" class="w-full border p-2 rounded bg-gray-50" readonly>
+          </div>
+          <div>
+            <label class="block text-xs text-gray-600 mb-1">希望数量 / 状態メモ</label>
+            <input type="text" id="reportComment" class="w-full border p-2 rounded" placeholder="例: 残り1箱です。補充をお願いします。">
+          </div>
+          <button onclick="submitReport()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded font-bold">報告を送信</button>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <script>
+    // ==========================================
+    // 1. Supabase 初期設定
+    // ※以下の2つの設定値を実際の値に置き換えてください
+    // ==========================================
+    const SUPABASE_URL = "https://sqgagiwcwynkavrpodzs.supabase.co/rest/v1/";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNxZ2FnaXdjd3lua2F2cnBvZHpzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA2Njg0NDMsImV4cCI6MjEwNjI0NDQ0M30.Jucqa0vMKLCW8ugoDs6EmcnyhNPnOtU3zdD2Y3pYPEc";
+
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // アプリ状態
+    let currentUser = null;
+    let dbItems = [];
+    let dbLocations = [];
+
+    // ログイン処理
+    async function handleLogin() {
+      const id = document.getElementById('loginId').value.trim();
+      const pw = document.getElementById('loginPw').value.trim();
+
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', id)
+        .eq('password', pw)
+        .single();
+
+      if (error || !data) {
+        alert('IDまたはパスワードが正しくありません');
+        return;
+      }
+
+      currentUser = data;
+      document.getElementById('userNameDisplay').textContent = `${currentUser.name} (${currentUser.role === 'admin' ? '管理者' : '一般'})`;
+      document.getElementById('loginSection').classList.add('hidden');
+      document.getElementById('appSection').classList.remove('hidden');
+      document.getElementById('logoutBtn').classList.remove('hidden');
+
+      if (currentUser.role === 'admin') {
+        document.getElementById('adminAddBtn').classList.remove('hidden');
+      }
+
+      document.getElementById('reportFinder').value = currentUser.name;
+
+      // 初回データ読み込み
+      await loadInitialData();
     }
 
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<App />);
+    function logout() {
+      location.reload();
+    }
+
+    // データ取得（Supabase）
+    async function loadInitialData() {
+      const { data: items } = await supabase.from('items').select('*');
+      const { data: locations } = await supabase.from('locations').select('*');
+
+      dbItems = items || [];
+      dbLocations = locations || [];
+
+      renderItems();
+      renderMapPins();
+      populateReportSelect();
+    }
+
+    // 物品テーブル描画
+    function renderItems() {
+      const keyword = document.getElementById('searchInput').value.toLowerCase();
+      const tbody = document.getElementById('itemsTableBody');
+      tbody.innerHTML = '';
+
+      const filtered = dbItems.filter(item => 
+        item.name.toLowerCase().includes(keyword) ||
+        item.location_name.toLowerCase().includes(keyword) ||
+        (item.tags && item.tags.some(t => t.toLowerCase().includes(keyword)))
+      );
+
+      filtered.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="p-3 font-medium">${item.name}</td>
+          <td class="p-3 text-gray-600">${item.category}</td>
+          <td class="p-3 text-indigo-600 font-semibold">${item.location_name}</td>
+          <td class="p-3">${(item.tags || []).map(t => `<span class="bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded mr-1">${t}</span>`).join('')}</td>
+          <td class="p-3 text-gray-600">${item.manager || '-'}</td>
+          <td class="p-3 text-center">
+            <button onclick="focusMap('${item.location_name}')" class="text-xs bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-2 py-1 rounded">場所確認</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // 図面ピン描画
+    function renderMapPins(activeLocationName = null) {
+      const layer = document.getElementById('pinLayer');
+      layer.innerHTML = '';
+
+      dbLocations.forEach(loc => {
+        const pin = document.createElement('div');
+        const isActive = loc.name === activeLocationName;
+        pin.className = `pin cursor-pointer font-bold text-xs px-2 py-1 rounded shadow ${isActive ? 'bg-red-600 text-white z-10 scale-125' : 'bg-white text-gray-700 border border-gray-300'}`;
+        pin.style.left = `${loc.pin_x}%`;
+        pin.style.top = `${loc.pin_y}%`;
+        pin.textContent = loc.name;
+        pin.onclick = () => alert(`保管場所: ${loc.name}`);
+        layer.appendChild(pin);
+      });
+    }
+
+    function focusMap(locationName) {
+      switchTab('map');
+      renderMapPins(locationName);
+    }
+
+    // 不足報告プルダウン
+    function populateReportSelect() {
+      const select = document.getElementById('reportItemSelect');
+      select.innerHTML = dbItems.map(i => `<option value="${i.name}">${i.name} (場所: ${i.location_name})</option>`).join('');
+    }
+
+    // 不足報告送信
+    async function submitReport() {
+      const itemName = document.getElementById('reportItemSelect').value;
+      const comment = document.getElementById('reportComment').value;
+
+      if (!comment) {
+        alert('コメントを入力してください');
+        return;
+      }
+
+      const { error } = await supabase.from('history').insert([{
+        item_name: itemName,
+        finder: currentUser.name,
+        requester: currentUser.name,
+        comment: comment
+      }]);
+
+      if (error) {
+        alert('送信に失敗しました');
+      } else {
+        alert('補充依頼・報告を送信しました！');
+        document.getElementById('reportComment').value = '';
+      }
+    }
+
+    // タブ切替
+    function switchTab(tab) {
+      ['items', 'map', 'report'].forEach(t => {
+        document.getElementById(`sec-${t}`).classList.add('hidden');
+        document.getElementById(`tab-${t}`).className = 'py-2 px-4 text-gray-500 font-medium';
+      });
+      document.getElementById(`sec-${tab}`).classList.remove('hidden');
+      document.getElementById(`tab-${tab}`).className = 'py-2 px-4 border-b-2 border-indigo-600 font-bold text-indigo-600';
+    }
   </script>
 </body>
 </html>
