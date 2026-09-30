@@ -5,14 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>社内物品管理システム</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Supabase JS Client library -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    // ==========================================
+    // Supabase 設定情報
+    // 下記の " " の中に、ご自身の Supabase の URL と KEY を貼り付けてください
+    // ==========================================
+    const SUPABASE_URL = "https://sqgagiwcwynkavrpodzs.supabase.co/rest/v1/";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNxZ2FnaXdjd3lua2F2cnBvZHpzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA2Njg0NDMsImV4cCI6MjEwNjI0NDQ0M30.Jucqa0vMKLCW8ugoDs6EmcnyhNPnOtU3zdD2Y3pYPEc";
+  </script>
   <style>
-    .pin {
-      position: absolute;
-      transform: translate(-50%, -50%);
-      transition: all 0.2s ease;
-    }
+    .pin { position: absolute; transform: translate(-50%, -50%); transition: all 0.2s ease; }
   </style>
 </head>
 <body class="bg-gray-100 text-gray-800 min-h-screen">
@@ -34,7 +37,7 @@
       <h2 class="text-lg font-bold mb-4 text-center">ログイン</h2>
       <div class="space-y-4">
         <div>
-          <label class="block text-xs text-gray-600 mb-1">ID (ID名)</label>
+          <label class="block text-xs text-gray-600 mb-1">ID (ユーザーID)</label>
           <input type="text" id="loginId" class="w-full border p-2 rounded text-sm" placeholder="admin または user">
         </div>
         <div>
@@ -45,23 +48,19 @@
       </div>
     </div>
 
-    <!-- 2. アプリ本体（初期状態は非表示） -->
+    <!-- 2. アプリ本体 -->
     <div id="appSection" class="hidden space-y-6">
-
-      <!-- タブ切替 -->
       <div class="flex border-b border-gray-300 gap-2">
         <button onclick="switchTab('items')" id="tab-items" class="py-2 px-4 border-b-2 border-indigo-600 font-bold text-indigo-600">物品一覧・検索</button>
         <button onclick="switchTab('map')" id="tab-map" class="py-2 px-4 text-gray-500 font-medium">図面ピン留め確認</button>
         <button onclick="switchTab('report')" id="tab-report" class="py-2 px-4 text-gray-500 font-medium">不足・発注報告</button>
       </div>
 
-      <!-- Tab A: 物品一覧・検索 -->
+      <!-- Tab A: 物品一覧 -->
       <div id="sec-items" class="space-y-4">
         <div class="flex flex-col sm:flex-row gap-2 justify-between items-center bg-white p-4 rounded shadow-sm">
           <input type="text" id="searchInput" oninput="renderItems()" placeholder="物品名・タグ・場所で検索..." class="border p-2 rounded text-sm w-full sm:w-80">
-          <button id="adminAddBtn" onclick="openItemModal()" class="hidden bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm font-bold w-full sm:w-auto">＋ 新規物品追加 (管理者専用)</button>
         </div>
-
         <div class="bg-white rounded shadow-sm overflow-x-auto">
           <table class="w-full text-left text-sm">
             <thead class="bg-gray-50 text-gray-600 border-b">
@@ -74,26 +73,21 @@
                 <th class="p-3 text-center">操作</th>
               </tr>
             </thead>
-            <tbody id="itemsTableBody" class="divide-y">
-              <!-- JSで動的描画 -->
-            </tbody>
+            <tbody id="itemsTableBody" class="divide-y"></tbody>
           </table>
         </div>
       </div>
 
-      <!-- Tab B: 図面ピン留め確認 -->
+      <!-- Tab B: 図面確認 -->
       <div id="sec-map" class="hidden bg-white p-4 rounded shadow-sm space-y-4">
         <p class="text-xs text-gray-500">保管場所を選択すると図面上の位置（ピン）が赤く表示されます。</p>
         <div class="relative w-full border bg-gray-100 rounded overflow-hidden aspect-[16/9]">
-          <!-- 実際の事務所図面を表示 -->
           <img src="事務所図面.jpg" alt="事務所図面" class="absolute inset-0 w-full h-full object-contain">
-          
-          <!-- ピン描画エリア -->
           <div id="pinLayer" class="absolute inset-0"></div>
         </div>
       </div>
 
-      <!-- Tab C: 不足・発注報告 -->
+      <!-- Tab C: 不足報告 -->
       <div id="sec-report" class="hidden bg-white p-6 rounded shadow-sm max-w-lg mx-auto space-y-4">
         <h3 class="font-bold border-b pb-2">物品の不足・補充依頼</h3>
         <div class="space-y-3 text-sm">
@@ -112,29 +106,35 @@
           <button onclick="submitReport()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded font-bold">報告を送信</button>
         </div>
       </div>
-
     </div>
   </main>
 
   <script>
-    // ==========================================
-    // 1. Supabase 初期設定
-    // ※以下の2つの設定値を実際の値に置き換えてください
-    // ==========================================
-    const SUPABASE_URL = "https://sqgagiwcwynkavrpodzs.supabase.co/rest/v1/";
-    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNxZ2FnaXdjd3lua2F2cnBvZHpzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA2Njg0NDMsImV4cCI6MjEwNjI0NDQ0M30.Jucqa0vMKLCW8ugoDs6EmcnyhNPnOtU3zdD2Y3pYPEc;
-
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-    // アプリ状態
+    let supabase = null;
     let currentUser = null;
     let dbItems = [];
     let dbLocations = [];
+
+    // ページの読み込み完了時にSupabaseを初期化
+    window.addEventListener('DOMContentLoaded', () => {
+      try {
+        if (SUPABASE_URL !== "ここにURLを入れる" && SUPABASE_ANON_KEY !== "ここにKEYを入れる") {
+          supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        }
+      } catch (e) {
+        console.error("Supabase初期化エラー:", e);
+      }
+    });
 
     // ログイン処理
     async function handleLogin() {
       const id = document.getElementById('loginId').value.trim();
       const pw = document.getElementById('loginPw').value.trim();
+
+      if (!supabase) {
+        alert("Supabaseの設定（URLまたはKEY）が正しく入力されていないか初期化できていません。コード12・13行目をご確認ください。");
+        return;
+      }
 
       const { data, error } = await supabase
         .from('users')
@@ -153,22 +153,17 @@
       document.getElementById('loginSection').classList.add('hidden');
       document.getElementById('appSection').classList.remove('hidden');
       document.getElementById('logoutBtn').classList.remove('hidden');
-
-      if (currentUser.role === 'admin') {
-        document.getElementById('adminAddBtn').classList.remove('hidden');
-      }
-
       document.getElementById('reportFinder').value = currentUser.name;
 
-      // 初回データ読み込み
       await loadInitialData();
     }
 
+    // ログアウト
     function logout() {
       location.reload();
     }
 
-    // データ取得（Supabase）
+    // データ読み込み
     async function loadInitialData() {
       const { data: items } = await supabase.from('items').select('*');
       const { data: locations } = await supabase.from('locations').select('*');
@@ -181,7 +176,7 @@
       populateReportSelect();
     }
 
-    // 物品テーブル描画
+    // 物品一覧描画
     function renderItems() {
       const keyword = document.getElementById('searchInput').value.toLowerCase();
       const tbody = document.getElementById('itemsTableBody');
@@ -226,12 +221,13 @@
       });
     }
 
+    // 特定の場所へピンズーム
     function focusMap(locationName) {
       switchTab('map');
       renderMapPins(locationName);
     }
 
-    // 不足報告プルダウン
+    // 不足報告のセレクトボックス生成
     function populateReportSelect() {
       const select = document.getElementById('reportItemSelect');
       select.innerHTML = dbItems.map(i => `<option value="${i.name}">${i.name} (場所: ${i.location_name})</option>`).join('');
@@ -262,7 +258,7 @@
       }
     }
 
-    // タブ切替
+    // タブ切り替え
     function switchTab(tab) {
       ['items', 'map', 'report'].forEach(t => {
         document.getElementById(`sec-${t}`).classList.add('hidden');
