@@ -14,7 +14,7 @@
       transform: translate(-50%, -100%);
       transition: all 0.2s ease;
       display: flex;
-      flex-col;
+      flex-direction: column;
       align-items: center;
       cursor: pointer;
     }
@@ -59,17 +59,17 @@
   <!-- メインコンテンツ -->
   <main class="container mx-auto p-4 max-w-5xl">
 
-    <!-- 1. ログイン画面 -->
+    <!-- 1. ログイン画面（ヒント表記を削除） -->
     <div id="loginSection" class="bg-white p-6 rounded-lg shadow-md max-w-md mx-auto my-12">
       <h2 class="text-lg font-bold mb-4 text-center">ログイン</h2>
       <div class="space-y-4">
         <div>
           <label class="block text-xs text-gray-600 mb-1">ID</label>
-          <input type="text" id="loginId" class="w-full border p-2 rounded text-sm" placeholder="admin または user">
+          <input type="text" id="loginId" class="w-full border p-2 rounded text-sm" placeholder="ユーザーIDを入力">
         </div>
         <div>
           <label class="block text-xs text-gray-600 mb-1">パスワード</label>
-          <input type="password" id="loginPw" class="w-full border p-2 rounded text-sm" placeholder="admin123 または user123">
+          <input type="password" id="loginPw" class="w-full border p-2 rounded text-sm" placeholder="パスワードを入力">
         </div>
         <button id="loginBtn" onclick="handleLogin()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded font-bold text-sm">ログイン</button>
       </div>
@@ -88,7 +88,7 @@
         <div class="flex flex-col sm:flex-row gap-2 justify-between items-center bg-white p-4 rounded shadow-sm">
           <input type="text" id="searchInput" oninput="renderItems()" placeholder="物品名・タグ・場所で検索..." class="border p-2 rounded text-sm w-full sm:w-80">
           <div class="flex gap-2 w-full sm:w-auto">
-            <button id="adminAddLocationBtn" onclick="openLocationModal()" class="hidden bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded text-sm font-bold w-full sm:w-auto">＋ 保管場所追加</button>
+            <button id="adminManageLocBtn" onclick="openLocationManageModal()" class="hidden bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded text-sm font-bold w-full sm:w-auto">保管場所一覧・編集</button>
             <button id="adminAddBtn" onclick="openItemModal()" class="hidden bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded text-sm font-bold w-full sm:w-auto">＋ 物品追加</button>
           </div>
         </div>
@@ -110,12 +110,17 @@
         </div>
       </div>
 
-      <!-- Tab B: 図面ピン留め確認 -->
+      <!-- Tab B: 図面ピン留め確認（クリックで場所追加対応） -->
       <div id="sec-map" class="hidden bg-white p-4 rounded shadow-sm space-y-4">
-        <p class="text-xs text-gray-500">保管場所を選択すると図面上の赤いピン（📍）が拡大強調表示されます。</p>
-        <div class="relative w-full border bg-gray-100 rounded overflow-hidden aspect-[16/9] flex items-center justify-center">
-          <img src="事務所図面.jpg" alt="事務所図面" class="absolute inset-0 w-full h-full object-contain" onerror="this.style.display='none'">
-          <div class="absolute inset-0 opacity-20 bg-[radial-gradient(#4f46e5_1px,transparent_1px)] [background-size:16px_16px]"></div>
+        <div class="flex justify-between items-center">
+          <p class="text-xs text-gray-500">
+            <span id="mapNotice">保管場所を選択すると図面上の赤いピン（📍）が拡大表示されます。</span>
+            <span id="adminMapNotice" class="hidden font-bold text-indigo-600">【管理者】図面上をクリックすると、その位置に新しい保管場所を追加できます。</span>
+          </p>
+        </div>
+        <div id="mapContainer" onclick="handleMapClick(event)" class="relative w-full border bg-gray-100 rounded overflow-hidden aspect-[16/9] flex items-center justify-center cursor-pointer">
+          <img src="事務所図面.jpg" alt="事務所図面" class="absolute inset-0 w-full h-full object-contain pointer-events-none" onerror="this.style.display='none'">
+          <div class="absolute inset-0 opacity-20 bg-[radial-gradient(#4f46e5_1px,transparent_1px)] [background-size:16px_16px] pointer-events-none"></div>
           
           <!-- ピン描画エリア -->
           <div id="pinLayer" class="absolute inset-0"></div>
@@ -145,10 +150,11 @@
     </div>
   </main>
 
-  <!-- 3. モーダル: 物品追加 -->
+  <!-- 3. モーダル: 物品追加・編集 -->
   <div id="itemModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
     <div class="bg-white rounded-lg p-6 max-w-md w-full space-y-4">
-      <h3 class="text-lg font-bold border-b pb-2">新規物品の登録</h3>
+      <h3 id="itemModalTitle" class="text-lg font-bold border-b pb-2">新規物品の登録</h3>
+      <input type="hidden" id="editItemId">
       <div class="space-y-3 text-sm">
         <div>
           <label class="block text-xs text-gray-600 mb-1">物品名 *</label>
@@ -173,35 +179,41 @@
       </div>
       <div class="flex justify-end gap-2 pt-2">
         <button onclick="closeItemModal()" class="px-4 py-2 border rounded text-sm">キャンセル</button>
-        <button onclick="saveNewItem()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded text-sm">保存</button>
+        <button onclick="saveItem()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded text-sm">保存</button>
       </div>
     </div>
   </div>
 
-  <!-- 4. モーダル: 保管場所追加 -->
-  <div id="locationModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-    <div class="bg-white rounded-lg p-6 max-w-md w-full space-y-4">
-      <h3 class="text-lg font-bold border-b pb-2">保管場所（図面ピン）の登録</h3>
+  <!-- 4. モーダル: 図面クリックでの保管場所登録 -->
+  <div id="locationClickModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-lg p-6 max-w-sm w-full space-y-4">
+      <h3 class="text-lg font-bold border-b pb-2">クリック位置に保管場所を追加</h3>
       <div class="space-y-3 text-sm">
         <div>
           <label class="block text-xs text-gray-600 mb-1">保管場所名 *</label>
-          <input type="text" id="newLocName" class="w-full border p-2 rounded" placeholder="例: キャビネットC">
+          <input type="text" id="clickLocName" class="w-full border p-2 rounded" placeholder="例: キャビネットC">
         </div>
-        <div class="grid grid-cols-2 gap-2">
-          <div>
-            <label class="block text-xs text-gray-600 mb-1">図面位置 X (%) (0-100)</label>
-            <input type="number" id="newLocX" min="0" max="100" class="w-full border p-2 rounded" value="50">
-          </div>
-          <div>
-            <label class="block text-xs text-gray-600 mb-1">図面位置 Y (%) (0-100)</label>
-            <input type="number" id="newLocY" min="0" max="100" class="w-full border p-2 rounded" value="50">
-          </div>
+        <div class="flex gap-4 text-xs text-gray-500">
+          <span>X位置: <strong id="clickLocXVal"></strong>%</span>
+          <span>Y位置: <strong id="clickLocYVal"></strong>%</span>
         </div>
-        <p class="text-xs text-gray-400">※位置は後から Supabase テーブル内で調整可能です（横位置: X%, 縦位置: Y%）。</p>
       </div>
       <div class="flex justify-end gap-2 pt-2">
-        <button onclick="closeLocationModal()" class="px-4 py-2 border rounded text-sm">キャンセル</button>
-        <button onclick="saveNewLocation()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded text-sm">保存</button>
+        <button onclick="closeLocationClickModal()" class="px-4 py-2 border rounded text-sm">キャンセル</button>
+        <button onclick="saveClickLocation()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded text-sm">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. モーダル: 保管場所の一覧・編集・削除 -->
+  <div id="locationManageModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-lg p-6 max-w-lg w-full space-y-4 max-h-[80vh] flex flex-col">
+      <h3 class="text-lg font-bold border-b pb-2">保管場所（ピン）の管理</h3>
+      <div class="overflow-y-auto flex-1 space-y-2" id="locationListContainer">
+        <!-- JSで一覧描画 -->
+      </div>
+      <div class="flex justify-end border-t pt-3">
+        <button onclick="closeLocationManageModal()" class="px-4 py-2 border rounded text-sm">閉じる</button>
       </div>
     </div>
   </div>
@@ -214,6 +226,8 @@
     let currentUser = null;
     let dbItems = [];
     let dbLocations = [];
+    let tempClickX = 0;
+    let tempClickY = 0;
 
     window.onload = function() {
       try {
@@ -254,7 +268,8 @@
 
         if (currentUser.role === 'admin') {
           document.getElementById('adminAddBtn').classList.remove('hidden');
-          document.getElementById('adminAddLocationBtn').classList.remove('hidden');
+          document.getElementById('adminManageLocBtn').classList.remove('hidden');
+          document.getElementById('adminMapNotice').classList.remove('hidden');
         }
 
         document.getElementById('reportFinder').value = currentUser.name;
@@ -284,6 +299,7 @@
       populateReportSelect();
     }
 
+    /* 物品テーブル描画（編集・削除ボタン付き） */
     function renderItems() {
       const keyword = document.getElementById('searchInput').value.toLowerCase();
       const tbody = document.getElementById('itemsTableBody');
@@ -297,21 +313,27 @@
 
       filtered.forEach(item => {
         const tr = document.createElement('tr');
+        const isAdmin = currentUser && currentUser.role === 'admin';
+
         tr.innerHTML = `
           <td class="p-3 font-medium">${item.name || ''}</td>
           <td class="p-3 text-gray-600">${item.category || ''}</td>
           <td class="p-3 text-indigo-600 font-semibold">${item.location_name || ''}</td>
           <td class="p-3">${(item.tags || []).map(t => `<span class="bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded mr-1">${t}</span>`).join('')}</td>
           <td class="p-3 text-gray-600">${item.manager || '-'}</td>
-          <td class="p-3 text-center">
+          <td class="p-3 text-center space-x-1">
             <button onclick="focusMap('${item.location_name}')" class="text-xs bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-2 py-1 rounded">場所確認</button>
+            ${isAdmin ? `
+              <button onclick="openEditItemModal('${item.id}')" class="text-xs bg-amber-50 text-amber-600 hover:bg-amber-100 px-2 py-1 rounded">編集</button>
+              <button onclick="deleteItem('${item.id}', '${item.name}')" class="text-xs bg-red-50 text-red-600 hover:bg-red-100 px-2 py-1 rounded">削除</button>
+            ` : ''}
           </td>
         `;
         tbody.appendChild(tr);
       });
     }
 
-    /* 赤いピンアイコンの描画 */
+    /* 図面ピン描画 */
     function renderMapPins(activeLocationName = null) {
       const layer = document.getElementById('pinLayer');
       layer.innerHTML = '';
@@ -327,7 +349,10 @@
           <div class="pin-icon"></div>
           <div class="pin-label">${loc.name}</div>
         `;
-        pinContainer.onclick = () => alert(`保管場所: ${loc.name}`);
+        pinContainer.onclick = (e) => {
+          e.stopPropagation(); // 図面クリックイベントを防止
+          alert(`保管場所: ${loc.name}`);
+        };
         layer.appendChild(pinContainer);
       });
     }
@@ -335,6 +360,200 @@
     function focusMap(locationName) {
       switchTab('map');
       renderMapPins(locationName);
+    }
+
+    /* 図面クリックで保管場所ピンを追加 */
+    function handleMapClick(e) {
+      if (!currentUser || currentUser.role !== 'admin') return;
+
+      const rect = e.currentTarget.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      tempClickX = Math.round((x / rect.width) * 1000) / 10;
+      tempClickY = Math.round((y / rect.height) * 1000) / 10;
+
+      document.getElementById('clickLocXVal').textContent = tempClickX;
+      document.getElementById('clickLocYVal').textContent = tempClickY;
+      document.getElementById('clickLocName').value = '';
+      document.getElementById('locationClickModal').classList.remove('hidden');
+    }
+
+    function closeLocationClickModal() {
+      document.getElementById('locationClickModal').classList.add('hidden');
+    }
+
+    async function saveClickLocation() {
+      const name = document.getElementById('clickLocName').value.trim();
+      if (!name) {
+        alert('保管場所名を入力してください');
+        return;
+      }
+
+      const { error } = await supabaseClient.from('locations').insert([{
+        name, pin_x: tempClickX, pin_y: tempClickY
+      }]);
+
+      if (error) {
+        alert('保存エラー: ' + error.message);
+      } else {
+        alert(`保管場所「${name}」を図面に追加しました！`);
+        closeLocationClickModal();
+        await loadInitialData();
+      }
+    }
+
+    /* 物品追加・編集モーダル */
+    function openItemModal() {
+      document.getElementById('itemModalTitle').textContent = '新規物品の登録';
+      document.getElementById('editItemId').value = '';
+      document.getElementById('newItemName').value = '';
+      document.getElementById('newItemCategory').value = '';
+      document.getElementById('newItemTags').value = '';
+      document.getElementById('newItemManager').value = '';
+
+      const select = document.getElementById('newItemLocationSelect');
+      select.innerHTML = dbLocations.map(l => `<option value="${l.name}">${l.name}</option>`).join('');
+      document.getElementById('itemModal').classList.remove('hidden');
+    }
+
+    function openEditItemModal(itemId) {
+      const item = dbItems.find(i => String(i.id) === String(itemId));
+      if (!item) return;
+
+      document.getElementById('itemModalTitle').textContent = '物品情報の編集';
+      document.getElementById('editItemId').value = item.id;
+      document.getElementById('newItemName').value = item.name || '';
+      document.getElementById('newItemCategory').value = item.category || '';
+      document.getElementById('newItemTags').value = (item.tags || []).join(', ');
+      document.getElementById('newItemManager').value = item.manager || '';
+
+      const select = document.getElementById('newItemLocationSelect');
+      select.innerHTML = dbLocations.map(l => `<option value="${l.name}" ${l.name === item.location_name ? 'selected' : ''}>${l.name}</option>`).join('');
+      document.getElementById('itemModal').classList.remove('hidden');
+    }
+
+    function closeItemModal() {
+      document.getElementById('itemModal').classList.add('hidden');
+    }
+
+    async function saveItem() {
+      const id = document.getElementById('editItemId').value;
+      const name = document.getElementById('newItemName').value.trim();
+      const category = document.getElementById('newItemCategory').value.trim();
+      const location_name = document.getElementById('newItemLocationSelect').value;
+      const tagsStr = document.getElementById('newItemTags').value.trim();
+      const manager = document.getElementById('newItemManager').value.trim();
+
+      if (!name) {
+        alert('物品名を入力してください');
+        return;
+      }
+
+      const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()) : [];
+
+      let error = null;
+      if (id) {
+        // 更新 (UPDATE)
+        const res = await supabaseClient.from('items').update({
+          name, category, location_name, tags, manager
+        }).eq('id', id);
+        error = res.error;
+      } else {
+        // 新規追加 (INSERT)
+        const res = await supabaseClient.from('items').insert([{
+          name, category, location_name, tags, manager
+        }]);
+        error = res.error;
+      }
+
+      if (error) {
+        alert('保存エラー: ' + error.message);
+      } else {
+        alert(id ? '物品情報を更新しました！' : '物品を追加しました！');
+        closeItemModal();
+        await loadInitialData();
+      }
+    }
+
+    /* 物品削除 */
+    async function deleteItem(id, name) {
+      if (!confirm(`物品「${name}」を削除してもよろしいですか？`)) return;
+
+      const { error } = await supabaseClient.from('items').delete().eq('id', id);
+      if (error) {
+        alert('削除エラー: ' + error.message);
+      } else {
+        alert('削除しました。');
+        await loadInitialData();
+      }
+    }
+
+    /* 保管場所の管理モーダル（一覧・編集・削除） */
+    function openLocationManageModal() {
+      renderLocationManageList();
+      document.getElementById('locationManageModal').classList.remove('hidden');
+    }
+
+    function closeLocationManageModal() {
+      document.getElementById('locationManageModal').classList.add('hidden');
+    }
+
+    function renderLocationManageList() {
+      const container = document.getElementById('locationListContainer');
+      container.innerHTML = '';
+
+      dbLocations.forEach(loc => {
+        const div = document.createElement('div');
+        div.className = "flex items-center justify-between p-3 border rounded bg-gray-50 text-sm gap-2";
+        div.innerHTML = `
+          <div class="flex-1">
+            <input type="text" id="locName_${loc.id}" value="${loc.name}" class="border p-1 rounded w-full font-bold">
+            <div class="flex gap-2 text-xs text-gray-500 mt-1">
+              <span>X%: <input type="number" id="locX_${loc.id}" value="${loc.pin_x}" class="border w-16 p-0.5 rounded"></span>
+              <span>Y%: <input type="number" id="locY_${loc.id}" value="${loc.pin_y}" class="border w-16 p-0.5 rounded"></span>
+            </div>
+          </div>
+          <div class="flex gap-1">
+            <button onclick="updateLocation('${loc.id}')" class="bg-indigo-600 text-white px-3 py-1 rounded text-xs font-bold hover:bg-indigo-700">更新</button>
+            <button onclick="deleteLocation('${loc.id}', '${loc.name}')" class="bg-red-600 text-white px-3 py-1 rounded text-xs font-bold hover:bg-red-700">削除</button>
+          </div>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    async function updateLocation(locId) {
+      const name = document.getElementById(`locName_${locId}`).value.trim();
+      const pin_x = parseFloat(document.getElementById(`locX_${locId}`).value);
+      const pin_y = parseFloat(document.getElementById(`locY_${locId}`).value);
+
+      if (!name) {
+        alert('保管場所名を入力してください');
+        return;
+      }
+
+      const { error } = await supabaseClient.from('locations').update({ name, pin_x, pin_y }).eq('id', locId);
+      if (error) {
+        alert('更新エラー: ' + error.message);
+      } else {
+        alert('保管場所を更新しました！');
+        await loadInitialData();
+        renderLocationManageList();
+      }
+    }
+
+    async function deleteLocation(locId, locName) {
+      if (!confirm(`保管場所「${locName}」を削除してもよろしいですか？`)) return;
+
+      const { error } = await supabaseClient.from('locations').delete().eq('id', locId);
+      if (error) {
+        alert('削除エラー: ' + error.message);
+      } else {
+        alert('削除しました。');
+        await loadInitialData();
+        renderLocationManageList();
+      }
     }
 
     function populateReportSelect() {
@@ -363,76 +582,6 @@
       } else {
         alert('補充依頼・報告を送信しました！');
         document.getElementById('reportComment').value = '';
-      }
-    }
-
-    /* モーダル関連：物品追加 */
-    function openItemModal() {
-      const select = document.getElementById('newItemLocationSelect');
-      select.innerHTML = dbLocations.map(l => `<option value="${l.name}">${l.name}</option>`).join('');
-      document.getElementById('itemModal').classList.remove('hidden');
-    }
-
-    function closeItemModal() {
-      document.getElementById('itemModal').classList.add('hidden');
-    }
-
-    async function saveNewItem() {
-      const name = document.getElementById('newItemName').value.trim();
-      const category = document.getElementById('newItemCategory').value.trim();
-      const location_name = document.getElementById('newItemLocationSelect').value;
-      const tagsStr = document.getElementById('newItemTags').value.trim();
-      const manager = document.getElementById('newItemManager').value.trim();
-
-      if (!name) {
-        alert('物品名を入力してください');
-        return;
-      }
-
-      const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()) : [];
-
-      const { error } = await supabaseClient.from('items').insert([{
-        name, category, location_name, tags, manager
-      }]);
-
-      if (error) {
-        alert('保存エラー: ' + error.message);
-      } else {
-        alert('物品を追加しました！');
-        closeItemModal();
-        await loadInitialData();
-      }
-    }
-
-    /* モーダル関連：保管場所追加 */
-    function openLocationModal() {
-      document.getElementById('locationModal').classList.remove('hidden');
-    }
-
-    function closeLocationModal() {
-      document.getElementById('locationModal').classList.add('hidden');
-    }
-
-    async function saveNewLocation() {
-      const name = document.getElementById('newLocName').value.trim();
-      const pin_x = parseFloat(document.getElementById('newLocX').value);
-      const pin_y = parseFloat(document.getElementById('newLocY').value);
-
-      if (!name) {
-        alert('保管場所名を入力してください');
-        return;
-      }
-
-      const { error } = await supabaseClient.from('locations').insert([{
-        name, pin_x, pin_y
-      }]);
-
-      if (error) {
-        alert('保存エラー: ' + error.message);
-      } else {
-        alert('保管場所（ピン）を追加しました！');
-        closeLocationModal();
-        await loadInitialData();
       }
     }
 
